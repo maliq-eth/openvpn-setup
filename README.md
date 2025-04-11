@@ -57,7 +57,6 @@ Contributions are welcome! Feel free to open an issue or submit a pull request i
 
 ## License
 This project is licensed under the MIT License. See the `LICENSE` file for details.
-```
 
 ### Steps to Add the README to Your Repository
 1. Save the above content in a file named `README.md`.
