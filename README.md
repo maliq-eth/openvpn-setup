@@ -1,6 +1,6 @@
 Here is an example `README.md` file for your OpenVPN setup repository. You can create this file in your repository to document the purpose and usage of the script.
 
-```markdown
+markdown
 # OpenVPN Setup Script for Ubuntu on Contabo VPS
 
 This repository contains a shell script to automate the installation and configuration of an OpenVPN server on a Contabo VPS running Ubuntu.
