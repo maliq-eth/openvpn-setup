@@ -29,6 +29,8 @@ function install_openvpn() {
   ./easyrsa build-client-full client1 nopass
   ./easyrsa gen-crl
 
+  openvpn --genkey secret /etc/openvpn/ta.key
+
   cp pki/ca.crt pki/private/ca.key pki/issued/server.crt \
      pki/private/server.key pki/dh.pem pki/crl.pem /etc/openvpn
 
@@ -40,6 +42,7 @@ ca ca.crt
 cert server.crt
 key server.key
 dh dh.pem
+tls-crypt ta.key
 crl-verify crl.pem
 topology subnet
 server 10.8.0.0 255.255.255.0
@@ -94,7 +97,7 @@ function select_ip() {
   if [[ ${#ips[@]} -eq 1 ]]; then
     echo "${ips[0]}"
   else
-    echo -e "${green}Pilih IP publik yang akan digunakan untuk klien:${nc}"
+    echo -e "\nPilih IP publik yang akan digunakan untuk klien:"
     for i in "${!ips[@]}"; do
       echo "$((i+1)). ${ips[$i]}"
     done
@@ -112,37 +115,40 @@ function select_ip() {
 
 function create_client() {
   echo -n "Masukkan nama client: "
-  read -r client
+  read -r unsanitized_client
+  client=$(sed 's/[^a-zA-Z0-9_-]/_/g' <<< "$unsanitized_client")
+
   cd ~/openvpn-ca/easy-rsa/easyrsa3 || exit
   ./easyrsa build-client-full "$client" nopass
 
   mkdir -p ~/client-configs/files
-
   selected_ip=$(select_ip)
 
-  cat > ~/client-configs/files/"$client".ovpn <<EOF
-client
-dev tun
-proto udp4
-remote $selected_ip 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-remote-cert-tls server
-cipher AES-256-CBC
-verb 3
-
-<ca>
-$(cat pki/ca.crt)
-</ca>
-<cert>
-$(cat pki/issued/"$client".crt)
-</cert>
-<key>
-$(cat pki/private/"$client".key)
-</key>
-EOF
+  {
+    echo "client"
+    echo "dev tun"
+    echo "proto udp4"
+    echo "remote $selected_ip 1194"
+    echo "resolv-retry infinite"
+    echo "nobind"
+    echo "persist-key"
+    echo "persist-tun"
+    echo "remote-cert-tls server"
+    echo "cipher AES-256-CBC"
+    echo "verb 3"
+    echo "<ca>"
+    cat pki/ca.crt
+    echo "</ca>"
+    echo "<cert>"
+    sed -ne '/BEGIN CERTIFICATE/,$ p' pki/issued/"$client".crt
+    echo "</cert>"
+    echo "<key>"
+    cat pki/private/"$client".key
+    echo "</key>"
+    echo "<tls-crypt>"
+    sed -ne '/BEGIN OpenVPN Static key/,$ p' /etc/openvpn/ta.key
+    echo "</tls-crypt>"
+  } > ~/client-configs/files/"$client".ovpn
 
   echo -e "${green}Client config $client.ovpn berhasil dibuat di ~/client-configs/files/${nc}"
   pause
