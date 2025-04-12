@@ -90,21 +90,29 @@ function get_ipv4_options() {
 
 function select_ip() {
   local ips=()
+  local selected_ip
+  # Ambil daftar IP dari fungsi get_ipv4_options
   while IFS= read -r line; do
     ips+=("$line")
   done < <(get_ipv4_options)
 
   if [[ ${#ips[@]} -eq 1 ]]; then
-    echo "${ips[0]}"
+    # Jika hanya ada satu IP, langsung pilih
+    selected_ip="${ips[0]}"
+    echo "$selected_ip"
   else
+    # Jika ada lebih dari satu IP, tampilkan daftar untuk dipilih
     echo -e "\nPilih IP publik yang akan digunakan untuk klien:"
     for i in "${!ips[@]}"; do
-      echo "$((i+1)). ${ips[$i]}"
+      echo "$((i + 1)). ${ips[$i]}"
     done
+
+    # Validasi input pengguna
     while true; do
       read -rp "Pilih [1-${#ips[@]}]: " ip_choice
       if [[ $ip_choice =~ ^[0-9]+$ ]] && ((ip_choice >= 1 && ip_choice <= ${#ips[@]})); then
-        echo "${ips[$((ip_choice-1))]}"
+        selected_ip="${ips[$((ip_choice - 1))]}"
+        echo "$selected_ip"
         return
       else
         echo "Pilihan tidak valid, coba lagi."
