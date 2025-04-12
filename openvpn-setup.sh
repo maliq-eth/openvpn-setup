@@ -16,14 +16,11 @@ function pause(){
 
 function install_openvpn() {
   echo -e "${green}Mulai instalasi OpenVPN...${nc}"
-  apt update && apt install -y openvpn easy-rsa iptables curl
+  apt update && apt install -y openvpn easy-rsa iptables curl git
 
-  make-cadir ~/openvpn-ca
-  cd ~/openvpn-ca || exit
-
-  # EasyRSA 3 setup
-  git clone https://github.com/OpenVPN/easy-rsa.git ~/easy-rsa
-  cd ~/easy-rsa/easyrsa3 || exit
+  mkdir -p ~/openvpn-ca
+  git clone https://github.com/OpenVPN/easy-rsa.git ~/openvpn-ca/easy-rsa
+  cd ~/openvpn-ca/easy-rsa/easyrsa3 || exit
 
   ./easyrsa init-pki
   ./easyrsa build-ca nopass
@@ -32,14 +29,12 @@ function install_openvpn() {
   ./easyrsa build-client-full client1 nopass
   ./easyrsa gen-crl
 
-  # Copy file penting ke /etc/openvpn
   cp pki/ca.crt pki/private/ca.key pki/issued/server.crt \
      pki/private/server.key pki/dh.pem pki/crl.pem /etc/openvpn
 
-  # Buat konfigurasi server
   cat > /etc/openvpn/server.conf <<EOF
 port 1194
-proto udp
+proto udp4
 dev tun
 ca ca.crt
 cert server.crt
@@ -63,15 +58,16 @@ verb 3
 explicit-exit-notify 1
 EOF
 
-  # Enable IP Forwarding
   echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
   sysctl -p
 
-  # Atur firewall
-  iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $(ip route get 1 | awk '{print $5}') -j MASQUERADE
-  iptables-save > /etc/iptables.rules
+  iface=$(ip route get 1 | awk '{print $5; exit}')
+  iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o "$iface" -j MASQUERADE
 
-  # Enable dan mulai OpenVPN
+  iptables-save > /etc/iptables.rules
+  echo -e '#!/bin/sh\niptables-restore < /etc/iptables.rules' > /etc/network/if-pre-up.d/iptables
+  chmod +x /etc/network/if-pre-up.d/iptables
+
   systemctl enable openvpn@server
   systemctl start openvpn@server
 
@@ -79,19 +75,46 @@ EOF
   pause
 }
 
+function get_ipv4_options() {
+  mapfile -t ip_list < <(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1)
+
+  if [[ ${#ip_list[@]} -eq 0 ]]; then
+    ip_list[0]=$(curl -4 -s ifconfig.me)
+  fi
+
+  echo "${ip_list[@]}"
+}
+
+function select_ip() {
+  local ips=($(get_ipv4_options))
+
+  if [[ ${#ips[@]} -eq 1 ]]; then
+    echo "${ips[0]}"
+  else
+    echo -e "${green}Pilih IP publik yang akan digunakan untuk klien:${nc}"
+    for i in "${!ips[@]}"; do
+      echo "$((i+1)). ${ips[$i]}"
+    done
+    read -rp "Pilih [1-${#ips[@]}]: " ip_choice
+    echo "${ips[$((ip_choice-1))]}"
+  fi
+}
+
 function create_client() {
   echo -n "Masukkan nama client: "
   read -r client
-  cd ~/easy-rsa/easyrsa3 || exit
+  cd ~/openvpn-ca/easy-rsa/easyrsa3 || exit
   ./easyrsa build-client-full "$client" nopass
 
-  # Buat file .ovpn
   mkdir -p ~/client-configs/files
+
+  selected_ip=$(select_ip)
+
   cat > ~/client-configs/files/"$client".ovpn <<EOF
 client
 dev tun
-proto udp
-remote $(curl -s ifconfig.me) 1194
+proto udp4
+remote $selected_ip 1194
 resolv-retry infinite
 nobind
 persist-key
@@ -117,14 +140,14 @@ EOF
 
 function list_clients() {
   echo -e "${green}Daftar Client:${nc}"
-  ls ~/easy-rsa/easyrsa3/pki/issued/
+  ls ~/openvpn-ca/easy-rsa/easyrsa3/pki/issued/
   pause
 }
 
 function remove_client() {
   echo -n "Masukkan nama client yang akan dihapus: "
   read -r client
-  cd ~/easy-rsa/easyrsa3 || exit
+  cd ~/openvpn-ca/easy-rsa/easyrsa3 || exit
   ./easyrsa revoke "$client"
   ./easyrsa gen-crl
   cp pki/crl.pem /etc/openvpn/crl.pem
@@ -139,7 +162,7 @@ function uninstall_openvpn() {
   if [[ "$confirm" == "ya" ]]; then
     systemctl stop openvpn@server
     apt remove --purge -y openvpn easy-rsa
-    rm -rf /etc/openvpn ~/easy-rsa ~/client-configs ~/openvpn-ca
+    rm -rf /etc/openvpn ~/openvpn-ca ~/client-configs
     echo -e "${red}OpenVPN telah dihapus.${nc}"
   fi
   pause
