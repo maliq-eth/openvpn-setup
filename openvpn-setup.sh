@@ -82,11 +82,14 @@ function get_ipv4_options() {
     ip_list[0]=$(curl -4 -s ifconfig.me)
   fi
 
-  echo "${ip_list[@]}"
+  printf "%s\n" "${ip_list[@]}"
 }
 
 function select_ip() {
-  local ips=($(get_ipv4_options))
+  local ips=()
+  while IFS= read -r line; do
+    ips+=("$line")
+  done < <(get_ipv4_options)
 
   if [[ ${#ips[@]} -eq 1 ]]; then
     echo "${ips[0]}"
@@ -95,8 +98,15 @@ function select_ip() {
     for i in "${!ips[@]}"; do
       echo "$((i+1)). ${ips[$i]}"
     done
-    read -rp "Pilih [1-${#ips[@]}]: " ip_choice
-    echo "${ips[$((ip_choice-1))]}"
+    while true; do
+      read -rp "Pilih [1-${#ips[@]}]: " ip_choice
+      if [[ $ip_choice =~ ^[0-9]+$ ]] && ((ip_choice >= 1 && ip_choice <= ${#ips[@]})); then
+        echo "${ips[$((ip_choice-1))]}"
+        return
+      else
+        echo "Pilihan tidak valid, coba lagi."
+      fi
+    done
   fi
 }
 
