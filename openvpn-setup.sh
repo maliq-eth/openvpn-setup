@@ -88,18 +88,6 @@ function get_ipv4_options() {
   printf "%s\n" "${ip_list[@]}"
 }
 
-function get_ipv4_options() {
-  mapfile -t ip_list < <(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1)
-
-  if [[ ${#ip_list[@]} -eq 0 ]]; then
-    echo "Tidak ada IP lokal yang ditemukan. Mencoba mendapatkan IP publik..."
-    ip_list[0]=$(curl -4 -s ifconfig.me || echo "Tidak ada IP")
-  fi
-
-  echo "Hasil daftar IP: ${ip_list[*]}" # Debug Output
-  printf "%s\n" "${ip_list[@]}"
-}
-
 function select_ip() {
   local ips=()
   while IFS= read -r line; do
